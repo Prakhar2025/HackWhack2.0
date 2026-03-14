@@ -1,5 +1,193 @@
 # Text-Based RPG Game
 
+
+import random
+import time
+
+class Settlement:
+    """Manages the player's city, resources, and buildings."""
+    def __init__(self, name):
+        self.name = name
+        self.year = 1
+        
+        # Resources
+        self.population = 10
+        self.food = 50
+        self.wood = 20
+        self.gold = 0
+        
+        # Buildings
+        self.huts = 2       # Each hut houses 5 people
+        self.farms = 1      # Generates food
+        self.lumberjacks = 0 # Generates wood
+        self.mines = 0      # Generates gold
+        
+    def capacity(self):
+        return self.huts * 5
+
+    def end_year(self):
+        """Calculates resource generation and consumption for the year."""
+        print("\n⏳ A year passes...")
+        time.sleep(1)
+        
+        # Production
+        food_gained = self.farms * 15
+        wood_gained = self.lumberjacks * 10
+        gold_gained = self.mines * 5
+        
+        self.food += food_gained
+        self.wood += wood_gained
+        self.gold += gold_gained
+        
+        # Consumption (Each person eats 1 food per year)
+        self.food -= self.population
+        
+        # Population Growth (If there is excess food and housing space)
+        growth = 0
+        if self.food > self.population * 2 and self.population < self.capacity():
+            growth = random.randint(1, 3)
+            # Ensure we don't exceed capacity
+            growth = min(growth, self.capacity() - self.population)
+            self.population += growth
+            
+        print(f"🌾 Harvested {food_gained} Food. 🌲 Chopped {wood_gained} Wood. 💰 Mined {gold_gained} Gold.")
+        
+        # Starvation check
+        if self.food < 0:
+            starved = abs(self.food)
+            self.food = 0
+            if starved > self.population:
+                starved = self.population
+            self.population -= starved
+            print(f"💀 Famine! {starved} people starved to death.")
+        elif growth > 0:
+            print(f"👶 Your settlement grew by {growth} people!")
+
+        self.year += 1
+
+def random_event(settlement):
+    """Triggers random events that can help or harm the settlement."""
+    chance = random.random()
+    if chance < 0.20:
+        # 20% chance for a bad event
+        events = [
+            ("A terrible storm destroyed some resources!", "wood", -10),
+            ("Thieves raided your gold stash!", "gold", -15),
+            ("A localized blight ruined some crops.", "food", -20)
+        ]
+        event, resource, amount = random.choice(events)
+        
+        # Apply the negative effect, ensuring we don't drop below 0
+        current_val = getattr(settlement, resource)
+        loss = min(current_val, abs(amount))
+        setattr(settlement, resource, current_val - loss)
+        
+        print(f"\n⚠️ WARNING: {event} (Lost {loss} {resource.capitalize()})")
+        
+    elif chance > 0.85:
+        # 15% chance for a good event
+        events = [
+            ("A wandering trader gifted you supplies!", "gold", 20),
+            ("A massive herd of deer migrated through!", "food", 30),
+            ("Your workers found an abandoned logging camp.", "wood", 25)
+        ]
+        event, resource, amount = random.choice(events)
+        
+        current_val = getattr(settlement, resource)
+        setattr(settlement, resource, current_val + amount)
+        
+        print(f"\n✨ BLESSING: {event} (Gained {amount} {resource.capitalize()})")
+
+def build_menu(city):
+    """Handles the building construction interface."""
+    while True:
+        print("\n--- CONSTRUCTION MENU ---")
+        print("1. Build Hut (Cost: 10 Wood) - Adds 5 Population Capacity")
+        print("2. Build Farm (Cost: 20 Wood) - Generates 15 Food/Year")
+        print("3. Build Lumberjack Camp (Cost: 15 Wood, 10 Gold) - Generates 10 Wood/Year")
+        print("4. Build Gold Mine (Cost: 30 Wood) - Generates 5 Gold/Year")
+        print("5. Return to Main Menu")
+        
+        choice = input("What will you build? ")
+        
+        if choice == '1':
+            if city.wood >= 10:
+                city.wood -= 10
+                city.huts += 1
+                print("🛖 Hut built!")
+            else:
+                print("❌ Not enough Wood.")
+        elif choice == '2':
+            if city.wood >= 20:
+                city.wood -= 20
+                city.farms += 1
+                print("🌾 Farm built!")
+            else:
+                print("❌ Not enough Wood.")
+        elif choice == '3':
+            if city.wood >= 15 and city.gold >= 10:
+                city.wood -= 15
+                city.gold -= 10
+                city.lumberjacks += 1
+                print("🌲 Lumberjack Camp built!")
+            else:
+                print("❌ Not enough resources.")
+        elif choice == '4':
+            if city.wood >= 30:
+                city.wood -= 30
+                city.mines += 1
+                print("⛏️ Gold Mine built!")
+            else:
+                print("❌ Not enough Wood.")
+        elif choice == '5':
+            break
+        else:
+            print("Invalid choice.")
+
+def main():
+    print("=========================================")
+    print("       TERMINAL KINGDOM BUILDER          ")
+    print("=========================================")
+    
+    name = input("Name your settlement: ")
+    if not name.strip():
+        name = "New Haven"
+        
+    city = Settlement(name)
+    
+    # Main Game Loop
+    while city.population > 0:
+        print(f"\n=========================================")
+        print(f" Year {city.year} | Settlement: {city.name}")
+        print(f"=========================================")
+        print(f"👥 Population: {city.population}/{city.capacity()}")
+        print(f"🌾 Food: {city.food} | 🌲 Wood: {city.wood} | 💰 Gold: {city.gold}")
+        print(f"Buildings: {city.huts} Huts, {city.farms} Farms, {city.lumberjacks} Lumberjacks, {city.mines} Mines")
+        print("-----------------------------------------")
+        print("1. Open Build Menu")
+        print("2. Do nothing and advance the year")
+        print("3. Abdicate (Quit Game)")
+        
+        choice = input("My liege, what is your command? ")
+        
+        if choice == '1':
+            build_menu(city)
+        elif choice == '2':
+            city.end_year()
+            random_event(city)
+        elif choice == '3':
+            print(f"\nYou abandoned {city.name} in Year {city.year}.")
+            break
+        else:
+            print("\n❌ Invalid command.")
+            
+    if city.population <= 0:
+        print(f"\n💀 Everyone in {city.name} has died. Your settlement fell to ruin in Year {city.year}.")
+
+if __name__ == "__main__":
+    main()
+
+
 import random
 import time
 
