@@ -4,6 +4,202 @@
 import random
 import time
 
+# --- GAME DATA ---
+ITEMS = ["Iron", "Water", "Medicine", "Tech"]
+
+PLANETS = {
+    "Earth": {"pos": 0, "base_prices": {"Iron": 10, "Water": 5, "Medicine": 25, "Tech": 50}},
+    "Mars": {"pos": 8, "base_prices": {"Iron": 8, "Water": 20, "Medicine": 30, "Tech": 45}},
+    "Titan": {"pos": 20, "base_prices": {"Iron": 15, "Water": 2, "Medicine": 40, "Tech": 60}},
+    "Nebula Prime": {"pos": 35, "base_prices": {"Iron": 25, "Water": 30, "Medicine": 15, "Tech": 30}}
+}
+
+class Ship:
+    """Manages the player's spaceship, cargo, and wallet."""
+    def __init__(self, name):
+        self.name = name
+        self.credits = 100
+        self.fuel = 50
+        self.max_fuel = 50
+        self.cargo = {"Iron": 0, "Water": 0, "Medicine": 0, "Tech": 0}
+        self.cargo_space = 20
+        self.current_planet = "Earth"
+
+    def current_cargo_amount(self):
+        return sum(self.cargo.values())
+
+def get_market_prices(planet_name):
+    """Generates slightly randomized prices based on the planet's base economy."""
+    base = PLANETS[planet_name]["base_prices"]
+    current_prices = {}
+    for item in ITEMS:
+        # Prices fluctuate by +/- 20%
+        fluctuation = random.uniform(0.8, 1.2)
+        current_prices[item] = int(base[item] * fluctuation)
+    return current_prices
+
+def market(ship):
+    """Handles buying and selling goods."""
+    prices = get_market_prices(ship.current_planet)
+    
+    while True:
+        print(f"\n--- {ship.current_planet} Market ---")
+        print(f"Credits: {ship.credits} | Cargo: {ship.current_cargo_amount()}/{ship.cargo_space}")
+        print("Available Goods:")
+        for i, item in enumerate(ITEMS, 1):
+            print(f"{i}. {item} - Buy: {prices[item]}C | Sell: {int(prices[item] * 0.8)}C | You own: {ship.cargo[item]}")
+        print("5. Refuel (2 Credits per 1 Fuel)")
+        print("6. Leave Market")
+        
+        choice = input("Select an option: ")
+        
+        if choice in ['1', '2', '3', '4']:
+            item = ITEMS[int(choice) - 1]
+            action = input(f"Do you want to (B)uy or (S)ell {item}? ").upper()
+            
+            if action == 'B':
+                qty = input(f"How many {item} to buy? ")
+                if qty.isdigit():
+                    qty = int(qty)
+                    cost = qty * prices[item]
+                    if ship.credits >= cost and (ship.current_cargo_amount() + qty) <= ship.cargo_space:
+                        ship.credits -= cost
+                        ship.cargo[item] += qty
+                        print(f"Bought {qty} {item} for {cost} Credits.")
+                    else:
+                        print("Not enough credits or cargo space!")
+                        
+            elif action == 'S':
+                qty = input(f"How many {item} to sell? ")
+                if qty.isdigit():
+                    qty = int(qty)
+                    if ship.cargo[item] >= qty:
+                        revenue = qty * int(prices[item] * 0.8)
+                        ship.credits += revenue
+                        ship.cargo[item] -= qty
+                        print(f"Sold {qty} {item} for {revenue} Credits.")
+                    else:
+                        print("You don't have that many to sell!")
+        
+        elif choice == '5':
+            missing_fuel = ship.max_fuel - ship.fuel
+            if missing_fuel == 0:
+                print("Fuel tank is already full.")
+            else:
+                cost = missing_fuel * 2
+                if ship.credits >= cost:
+                    ship.credits -= cost
+                    ship.fuel = ship.max_fuel
+                    print("Refueled to maximum.")
+                else:
+                    affordable = ship.credits // 2
+                    ship.credits -= affordable * 2
+                    ship.fuel += affordable
+                    print(f"Could only afford {affordable} fuel.")
+                    
+        elif choice == '6':
+            break
+        else:
+            print("Invalid choice.")
+
+def random_encounter(ship):
+    """Triggers events while traveling in deep space."""
+    chance = random.random()
+    if chance < 0.2:
+        print("\n⚠️ WARNING: Space Pirates intercepted your ship!")
+        if ship.credits > 20:
+            stolen = int(ship.credits * 0.25)
+            ship.credits -= stolen
+            print(f"They hacked your accounts and stole {stolen} Credits before warping away!")
+        else:
+            print("They saw you were broke and left you alone out of pity.")
+    elif chance > 0.85:
+        print("\n✨ You found an abandoned cargo pod drifting in space!")
+        found_credits = random.randint(20, 100)
+        ship.credits += found_credits
+        print(f"Salvaged {found_credits} Credits from the wreckage.")
+
+def travel(ship):
+    """Handles movement between planets and fuel consumption."""
+    print("\n--- Navigation Chart ---")
+    destinations = [p for p in PLANETS.keys() if p != ship.current_planet]
+    
+    for i, target in enumerate(destinations, 1):
+        dist = abs(PLANETS[ship.current_planet]["pos"] - PLANETS[target]["pos"])
+        print(f"{i}. {target} (Distance: {dist} | Fuel Cost: {dist})")
+    print(f"{len(destinations) + 1}. Cancel")
+    
+    choice = input("Where do you want to warp? ")
+    
+    if choice.isdigit() and 1 <= int(choice) <= len(destinations):
+        target_planet = destinations[int(choice) - 1]
+        dist = abs(PLANETS[ship.current_planet]["pos"] - PLANETS[target_planet]["pos"])
+        
+        if ship.fuel >= dist:
+            print(f"\n🚀 Initiating warp to {target_planet}...")
+            time.sleep(1)
+            ship.fuel -= dist
+            ship.current_planet = target_planet
+            print(f"Arrived at {ship.current_planet}. Fuel remaining: {ship.fuel}/{ship.max_fuel}")
+            random_encounter(ship)
+        else:
+            print("❌ Not enough fuel to reach that destination!")
+    elif choice == str(len(destinations) + 1):
+        return
+    else:
+        print("Invalid choice.")
+
+def main():
+    print("=========================================")
+    print("           GALACTIC MERCHANT             ")
+    print("=========================================")
+    
+    name = input("Enter your ship's name: ")
+    if not name.strip():
+        name = "The Century Falcon"
+        
+    ship = Ship(name)
+    
+    while True:
+        print(f"\n=========================================")
+        print(f" Ship: {ship.name} | Location: {ship.current_planet}")
+        print(f" Credits: {ship.credits}C | Fuel: {ship.fuel}/{ship.max_fuel}")
+        print(f"=========================================")
+        print("1. Visit Local Market")
+        print("2. Travel to Another Planet")
+        print("3. View Cargo Hold")
+        print("4. Retire (Quit Game)")
+        
+        choice = input("Captain, what are your orders? ")
+        
+        if choice == '1':
+            market(ship)
+        elif choice == '2':
+            travel(ship)
+        elif choice == '3':
+            print("\n--- Cargo Hold ---")
+            for item, qty in ship.cargo.items():
+                if qty > 0:
+                    print(f"{item}: {qty}")
+            print(f"Total Space Used: {ship.current_cargo_amount()}/{ship.cargo_space}")
+        elif choice == '4':
+            print(f"\nYou retired with {ship.credits} Credits. Thanks for playing!")
+            break
+        else:
+            print("\n❌ Invalid command.")
+            
+        # Check for game over (no fuel, no credits, stuck)
+        if ship.fuel == 0 and ship.credits < 2 and ship.current_cargo_amount() == 0:
+            print("\n💀 GAME OVER: You are stranded in space with no fuel, no goods, and no money.")
+            break
+
+if __name__ == "__main__":
+    main()
+
+
+import random
+import time
+
 class Settlement:
     """Manages the player's city, resources, and buildings."""
     def __init__(self, name):
