@@ -1,5 +1,209 @@
 # Text-Based RPG Game
+import random
 
+# --- GAME CONSTANTS ---
+MAP_WIDTH = 15
+MAP_HEIGHT = 10
+WALL = "█"
+FLOOR = "."
+PLAYER = "@"
+ENEMY = "G"
+GOLD = "$"
+EXIT = "O"
+
+class Entity:
+    """Base class for anything that exists on the grid."""
+    def __init__(self, x, y, symbol, name, hp, attack):
+        self.x = x
+        self.y = y
+        self.symbol = symbol
+        self.name = name
+        self.hp = hp
+        self.max_hp = hp
+        self.attack = attack
+
+    def is_alive(self):
+        return self.hp > 0
+
+class Player(Entity):
+    def __init__(self, x, y):
+        super().__init__(x, y, PLAYER, "Hero", hp=30, attack=5)
+        self.gold = 0
+        self.floor = 1
+
+    def heal(self, amount):
+        self.hp = min(self.max_hp, self.hp + amount)
+
+class Enemy(Entity):
+    def __init__(self, x, y):
+        # Randomize enemy stats slightly
+        hp = random.randint(8, 15)
+        atk = random.randint(2, 4)
+        super().__init__(x, y, ENEMY, "Goblin", hp, atk)
+
+class Dungeon:
+    """Manages the 2D grid, movement, and collisions."""
+    def __init__(self, player):
+        self.grid = []
+        self.player = player
+        self.enemies = []
+        self.items = [] # Stores gold coordinates as tuples: (x, y)
+        self.exit_pos = (0, 0)
+        self.generate_level()
+
+    def generate_level(self):
+        """Creates a new map with walls, enemies, and an exit."""
+        self.grid = [[FLOOR for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
+        self.enemies.clear()
+        self.items.clear()
+        
+        # Create borders
+        for x in range(MAP_WIDTH):
+            self.grid[0][x] = WALL
+            self.grid[MAP_HEIGHT-1][x] = WALL
+        for y in range(MAP_HEIGHT):
+            self.grid[y][0] = WALL
+            self.grid[y][MAP_WIDTH-1] = WALL
+            
+        # Add random internal walls
+        for _ in range(20):
+            wx, wy = random.randint(1, MAP_WIDTH-2), random.randint(1, MAP_HEIGHT-2)
+            self.grid[wy][wx] = WALL
+
+        # Place player
+        self.player.x, self.player.y = self.get_empty_space()
+        
+        # Place enemies (more enemies on higher floors)
+        num_enemies = min(3 + self.player.floor, 8)
+        for _ in range(num_enemies):
+            ex, ey = self.get_empty_space()
+            self.enemies.append(Enemy(ex, ey))
+            
+        # Place gold
+        for _ in range(4):
+            self.items.append(self.get_empty_space())
+            
+        # Place Exit
+        self.exit_pos = self.get_empty_space()
+
+    def get_empty_space(self):
+        """Finds a random tile that isn't a wall or occupied."""
+        while True:
+            x = random.randint(1, MAP_WIDTH - 2)
+            y = random.randint(1, MAP_HEIGHT - 2)
+            if self.grid[y][x] == FLOOR:
+                # Check it's not occupied by exit, gold, or enemies
+                if (x, y) == self.exit_pos or (x, y) in self.items:
+                    continue
+                occupied = any(e.x == x and e.y == y for e in self.enemies)
+                if not occupied:
+                    return x, y
+
+    def draw(self):
+        """Renders the 2D array to the terminal."""
+        print(f"\n--- FLOOR {self.player.floor} ---")
+        print(f"HP: {self.player.hp}/{self.player.max_hp} | Gold: {self.player.gold} | ATK: {self.player.attack}")
+        print("Controls: W (Up), A (Left), S (Down), D (Right)")
+        
+        for y in range(MAP_HEIGHT):
+            row_str = ""
+            for x in range(MAP_WIDTH):
+                # Check what to draw at this coordinate
+                if self.player.x == x and self.player.y == y:
+                    row_str += self.player.symbol
+                else:
+                    enemy_here = next((e for e in self.enemies if e.x == x and e.y == y), None)
+                    if enemy_here:
+                        row_str += enemy_here.symbol
+                    elif (x, y) == self.exit_pos:
+                        row_str += EXIT
+                    elif (x, y) in self.items:
+                        row_str += GOLD
+                    else:
+                        row_str += self.grid[y][x]
+            print(row_str)
+
+    def move_player(self, dx, dy):
+        """Handles player movement and bumping into things."""
+        new_x = self.player.x + dx
+        new_y = self.player.y + dy
+
+        # 1. Check for Walls
+        if self.grid[new_y][new_x] == WALL:
+            print("\nYou bumped into a wall.")
+            return
+
+        # 2. Check for Enemies (Bump to attack)
+        enemy_hit = next((e for e in self.enemies if e.x == new_x and e.y == new_y), None)
+        if enemy_hit:
+            self.combat(enemy_hit)
+            return # Don't move into the space if there's an enemy there
+
+        # 3. Move Player
+        self.player.x = new_x
+        self.player.y = new_y
+
+        # 4. Check for Gold
+        if (new_x, new_y) in self.items:
+            found = random.randint(5, 15)
+            self.player.gold += found
+            self.items.remove((new_x, new_y))
+            print(f"\nYou picked up {found} gold!")
+
+        # 5. Check for Exit
+        if (new_x, new_y) == self.exit_pos:
+            print("\nYou found the stairs! Descending deeper...")
+            self.player.floor += 1
+            # Heal slightly on floor clear
+            self.player.heal(10)
+            self.generate_level()
+
+    def combat(self, enemy):
+        """Simple bump-combat resolution."""
+        print(f"\nYou attack the {enemy.name} for {self.player.attack} damage!")
+        enemy.hp -= self.player.attack
+        
+        if not enemy.is_alive():
+            print(f"You defeated the {enemy.name}!")
+            self.enemies.remove(enemy)
+        else:
+            # Enemy retaliates
+            print(f"The {enemy.name} hits back for {enemy.attack} damage!")
+            self.player.hp -= enemy.attack
+
+def main():
+    print("=========================================")
+    print("        TERMINAL TOMB EXPLORER           ")
+    print("=========================================")
+    print("Find the 'O' to descend. 'G' are enemies. '$' is gold.")
+    
+    player = Player(1, 1) # Initial dummy coordinates
+    dungeon = Dungeon(player)
+    
+    while player.is_alive():
+        dungeon.draw()
+        move = input("\nAction: ").strip().lower()
+        
+        if move == 'w':
+            dungeon.move_player(0, -1)
+        elif move == 's':
+            dungeon.move_player(0, 1)
+        elif move == 'a':
+            dungeon.move_player(-1, 0)
+        elif move == 'd':
+            dungeon.move_player(1, 0)
+        elif move == 'q':
+            print("Cowardly abandoning the dungeon...")
+            break
+        else:
+            print("Invalid command. Use WASD to move, or Q to quit.")
+            
+    if not player.is_alive():
+        print("\n💀 YOU DIED! 💀")
+        print(f"You made it to Floor {player.floor} and collected {player.gold} gold.")
+
+if __name__ == "__main__":
+    main()
 
 import random
 import time
