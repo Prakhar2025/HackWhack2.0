@@ -1,3 +1,239 @@
+import random
+import time
+
+# --- GAME DATA ---
+# Dictionary containing all crop stats
+CROPS = {
+    "Turnip": {"cost": 10, "sell": 25, "growth_time": 3, "symbol": "T"},
+    "Potato": {"cost": 20, "sell": 45, "growth_time": 5, "symbol": "P"},
+    "Tomato": {"cost": 30, "sell": 80, "growth_time": 8, "symbol": "O"}
+}
+
+class Crop:
+    """Represents a single plant on the farm."""
+    def __init__(self, name):
+        self.name = name
+        self.age = 0
+        self.is_watered = False
+        self.is_dead = False
+        self.stats = CROPS[name]
+        
+    def is_mature(self):
+        return self.age >= self.stats["growth_time"]
+
+    def pass_day(self):
+        """Logic for how a plant changes overnight."""
+        if self.is_dead or self.is_mature():
+            self.is_watered = False
+            return
+
+        if self.is_watered:
+            self.age += 1
+            self.is_watered = False
+        else:
+            # 30% chance a crop dies if left unwatered
+            if random.random() < 0.30:
+                self.is_dead = True
+
+    def get_icon(self):
+        """Returns the ASCII visual for the plant based on its state."""
+        if self.is_dead:
+            return "[ x ]"
+        if self.is_mature():
+            return f"[{self.stats['symbol']}{self.stats['symbol']}]"
+        if self.age == 0:
+            return "[ . ]" # Seed
+        return f"[ {self.age} ]" # Growing
+
+class Farm:
+    """Manages the player's land, money, and inventory."""
+    def __init__(self, player_name):
+        self.owner = player_name
+        self.day = 1
+        self.money = 50
+        self.seeds = {"Turnip": 3, "Potato": 0, "Tomato": 0}
+        
+        # A 3x3 grid representing the field. None means empty dirt.
+        self.grid_size = 3
+        self.field = [[None for _ in range(self.grid_size)] for _ in range(self.grid_size)]
+        
+    def draw_field(self):
+        """Renders the farm grid."""
+        print(f"\n=== {self.owner.upper()}'S FARM | DAY {self.day} ===")
+        print(f"Money: {self.money}G | Seeds: {self.seeds}")
+        print("  0     1     2  (Columns)")
+        for y in range(self.grid_size):
+            row_display = f"{y} "
+            for x in range(self.grid_size):
+                crop = self.field[y][x]
+                if crop is None:
+                    row_display += "[   ] "
+                else:
+                    # Add a blue * if it's watered
+                    water_mark = "*" if crop.is_watered else " "
+                    row_display += crop.get_icon() + water_mark
+            print(row_display)
+        print("Legend: [ . ] Seed | [ 1 ] Age | [XX] Mature | [ x ] Dead | * Watered")
+
+    def plant_seed(self, x, y, crop_name):
+        if self.field[y][x] is not None:
+            print("\n❌ There is already something planted there!")
+            return
+        if self.seeds[crop_name] <= 0:
+            print(f"\n❌ You don't have any {crop_name} seeds!")
+            return
+            
+        self.seeds[crop_name] -= 1
+        self.field[y][x] = Crop(crop_name)
+        print(f"\n🌱 Planted a {crop_name} seed at ({x}, {y}).")
+
+    def water_crop(self, x, y):
+        crop = self.field[y][x]
+        if crop is None:
+            print("\n❌ You watered the dirt. Nothing happened.")
+        elif crop.is_dead:
+            print("\n❌ You watered a dead plant. It's still dead.")
+        elif crop.is_mature():
+            print("\n❌ This crop is already fully grown and ready to harvest.")
+        else:
+            crop.is_watered = True
+            print(f"\n💧 Watered the crop at ({x}, {y}).")
+
+    def harvest_crop(self, x, y):
+        crop = self.field[y][x]
+        if crop is None:
+            print("\n❌ Nothing to harvest there.")
+            return
+            
+        if crop.is_dead:
+            print(f"\n🧹 You cleared the dead {crop.name} plant.")
+            self.field[y][x] = None
+        elif crop.is_mature():
+            profit = crop.stats["sell"]
+            self.money += profit
+            print(f"\n🌾 Harvested a perfect {crop.name}! Earned {profit}G.")
+            self.field[y][x] = None
+        else:
+            print("\n❌ That crop isn't ready to harvest yet!")
+
+    def sleep(self):
+        """Advances to the next day, runs crop logic, and handles weather."""
+        self.day += 1
+        print("\n🌙 You go to sleep...")
+        time.sleep(1)
+        
+        # 25% chance for rain
+        is_raining = random.random() < 0.25
+        if is_raining:
+            print("🌧️ You wake up to the sound of rain! All crops are watered.")
+        else:
+            print("☀️ It's a sunny morning.")
+            
+        # Update all crops
+        for y in range(self.grid_size):
+            for x in range(self.grid_size):
+                crop = self.field[y][x]
+                if crop is not None:
+                    if is_raining and not crop.is_dead and not crop.is_mature():
+                        crop.is_watered = True
+                    crop.pass_day()
+
+def shop(farm):
+    """Simple store to buy seeds."""
+    while True:
+        print("\n--- PIERRE'S GENERAL STORE ---")
+        print(f"Your Money: {farm.money}G")
+        for i, (name, data) in enumerate(CROPS.items(), 1):
+            print(f"{i}. {name} Seeds - {data['cost']}G (Sells for {data['sell']}G, Takes {data['growth_time']} days)")
+        print("4. Leave Shop")
+        
+        choice = input("What would you like to buy? ")
+        if choice in ['1', '2', '3']:
+            crop_name = list(CROPS.keys())[int(choice) - 1]
+            cost = CROPS[crop_name]['cost']
+            
+            if farm.money >= cost:
+                farm.money -= cost
+                farm.seeds[crop_name] += 1
+                print(f"\n🛒 Bought 1 {crop_name} seed.")
+            else:
+                print("\n❌ Not enough money!")
+        elif choice == '4':
+            break
+        else:
+            print("Invalid choice.")
+
+def get_coordinates():
+    """Helper function to get safe X, Y inputs from the user."""
+    try:
+        coords = input("Enter Column (X) and Row (Y) separated by a space (e.g., '1 2'): ")
+        x, y = map(int, coords.split())
+        if 0 <= x <= 2 and 0 <= y <= 2:
+            return x, y
+        else:
+            print("Coordinates must be between 0 and 2.")
+            return None, None
+    except ValueError:
+        print("Invalid format. Please enter two numbers separated by a space.")
+        return None, None
+
+def main():
+    print("=========================================")
+    print("            TERMINAL VALLEY              ")
+    print("=========================================")
+    
+    name = input("Welcome! What is your name? ")
+    if not name.strip():
+        name = "Farmer"
+        
+    farm = Farm(name)
+    
+    # Game loops until the player reaches 500G
+    while farm.money < 500:
+        farm.draw_field()
+        print("\nACTIONS: 1. Plant | 2. Water | 3. Harvest | 4. Visit Shop | 5. Sleep | 6. Quit")
+        choice = input("What will you do? ")
+        
+        if choice == '1':
+            print(f"Available Seeds: {farm.seeds}")
+            crop_choice = input("Which seed? (Type 'Turnip', 'Potato', or 'Tomato'): ").capitalize()
+            if crop_choice in CROPS:
+                x, y = get_coordinates()
+                if x is not None:
+                    farm.plant_seed(x, y, crop_choice)
+            else:
+                print("Unknown seed.")
+                
+        elif choice == '2':
+            x, y = get_coordinates()
+            if x is not None:
+                farm.water_crop(x, y)
+                
+        elif choice == '3':
+            x, y = get_coordinates()
+            if x is not None:
+                farm.harvest_crop(x, y)
+                
+        elif choice == '4':
+            shop(farm)
+            
+        elif choice == '5':
+            farm.sleep()
+            
+        elif choice == '6':
+            print("Thanks for playing!")
+            break
+        else:
+            print("Invalid choice.")
+            
+    if farm.money >= 500:
+        farm.draw_field()
+        print(f"\n🏆 CONGRATULATIONS! You earned {farm.money}G and bought out the town! You win!")
+
+if __name__ == "__main__":
+    main()
+
+
 # Text-Based RPG Game
 import random
 
