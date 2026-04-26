@@ -1,6 +1,219 @@
 import random
 import time
 
+class Card:
+    """Represents a single playable card."""
+    def __init__(self, name, card_type, value, cost):
+        self.name = name
+        self.type = card_type  # 'attack', 'defend', 'heal'
+        self.value = value
+        self.cost = cost
+
+    def __str__(self):
+        return f"[{self.name} | {self.type.upper()} {self.value} | Cost: {self.cost} Energy]"
+
+class Player:
+    """Manages player health, energy, and deck states."""
+    def __init__(self, name):
+        self.name = name
+        self.max_hp = 50
+        self.hp = 50
+        self.max_energy = 3
+        self.energy = 3
+        self.block = 0
+        
+        # The Starter Deck
+        self.deck = [
+            Card("Strike", "attack", 6, 1),
+            Card("Strike", "attack", 6, 1),
+            Card("Strike", "attack", 6, 1),
+            Card("Defend", "defend", 5, 1),
+            Card("Defend", "defend", 5, 1),
+            Card("Bandage", "heal", 8, 2),
+            Card("Heavy Smash", "attack", 12, 2)
+        ]
+        self.hand = []
+        self.discard = []
+        random.shuffle(self.deck)
+
+    def draw_cards(self, num):
+        """Draws cards from deck to hand. Reshuffles discard if deck is empty."""
+        for _ in range(num):
+            if not self.deck:
+                if not self.discard:
+                    break  # No cards left anywhere!
+                self.deck = self.discard.copy()
+                self.discard.clear()
+                random.shuffle(self.deck)
+                print("\n[♻️ Reshuffling Discard Pile into Deck]")
+            self.hand.append(self.deck.pop(0))
+
+    def take_damage(self, damage):
+        """Calculates damage, absorbing it with block first."""
+        actual_damage = max(0, damage - self.block)
+        self.block = max(0, self.block - damage)
+        self.hp -= actual_damage
+        return actual_damage
+
+class Enemy:
+    """A monster with telegraphed attacks."""
+    def __init__(self, name, hp, attacks):
+        self.name = name
+        self.max_hp = hp
+        self.hp = hp
+        self.attacks = attacks  # List of tuples: (Attack Name, Damage)
+        self.block = 0
+        self.next_move = None
+
+    def plan_move(self):
+        self.next_move = random.choice(self.attacks)
+
+    def take_damage(self, damage):
+        self.hp -= damage
+        return damage
+
+def combat(player, enemy):
+    """The core turn-based card combat loop."""
+    print(f"\n*** BATTLE START: {player.name} vs {enemy.name} ***")
+    
+    while player.hp > 0 and enemy.hp > 0:
+        # --- PLAYER TURN SETUP ---
+        player.energy = player.max_energy
+        player.block = 0  # Block resets every turn!
+        player.draw_cards(4)
+        enemy.plan_move()
+        
+        while True:
+            print(f"\n--- {player.name}'s Turn ---")
+            print(f"HP: {player.hp}/{player.max_hp} | Block: 🛡️ {player.block} | Energy: ⚡ {player.energy}/{player.max_energy}")
+            print(f"Enemy: {enemy.name} | HP: {enemy.hp}/{enemy.max_hp} | Intent: ⚔️ {enemy.next_move[0]} ({enemy.next_move[1]} DMG)")
+            
+            print("\nYour Hand:")
+            for i, card in enumerate(player.hand, 1):
+                print(f"{i}. {card}")
+            print(f"{len(player.hand) + 1}. End Turn")
+            
+            choice = input("Play a card (enter number): ")
+            
+            if choice.isdigit():
+                idx = int(choice) - 1
+                
+                # End Turn logic
+                if idx == len(player.hand):
+                    break 
+                    
+                # Play Card logic
+                elif 0 <= idx < len(player.hand):
+                    card = player.hand[idx]
+                    if player.energy >= card.cost:
+                        player.energy -= card.cost
+                        # Move card from hand to discard
+                        played_card = player.hand.pop(idx)
+                        player.discard.append(played_card)
+                        
+                        # Resolve card effect
+                        if card.type == "attack":
+                            dmg = enemy.take_damage(card.value)
+                            print(f"\n💥 You played {card.name} and dealt {dmg} damage!")
+                        elif card.type == "defend":
+                            player.block += card.value
+                            print(f"\n🛡️ You played {card.name} and gained {card.value} Block!")
+                        elif card.type == "heal":
+                            heal = min(player.max_hp - player.hp, card.value)
+                            player.hp += heal
+                            print(f"\n💖 You played {card.name} and healed {heal} HP!")
+                            
+                        # Check if enemy died mid-turn
+                        if enemy.hp <= 0:
+                            break
+                    else:
+                        print("\n❌ Not enough Energy!")
+                else:
+                    print("\n❌ Invalid card number.")
+            else:
+                print("\n❌ Invalid input.")
+
+        # --- END OF PLAYER TURN ---
+        # Discard remaining hand
+        player.discard.extend(player.hand)
+        player.hand.clear()
+        
+        if enemy.hp <= 0:
+            print(f"\n*** 🏆 You defeated the {enemy.name}! ***")
+            return True
+            
+        # --- ENEMY TURN ---
+        print(f"\n--- {enemy.name}'s Turn ---")
+        time.sleep(1)
+        print(f"{enemy.name} uses {enemy.next_move[0]}!")
+        dmg = player.take_damage(enemy.next_move[1])
+        print(f"💥 You took {dmg} damage!")
+        time.sleep(1)
+        
+    if player.hp <= 0:
+        return False
+
+def draft_card(player):
+    """Allows the player to add a new card to their deck after a fight."""
+    draft_pool = [
+        Card("Fireball", "attack", 15, 2),
+        Card("Iron Wall", "defend", 12, 2),
+        Card("Quick Strike", "attack", 4, 0),
+        Card("Potion", "heal", 15, 2)
+    ]
+    options = random.sample(draft_pool, 3)
+    
+    print("\n--- 🃏 DRAFT A NEW CARD ---")
+    for j, card in enumerate(options, 1):
+        print(f"{j}. {card}")
+    
+    choice = input("Choose a card to add to your deck (1-3): ")
+    if choice in ['1', '2', '3']:
+        selected = options[int(choice)-1]
+        player.deck.append(selected)
+        print(f"✅ Added {selected.name} to your deck!")
+    else:
+        print("Skipped drafting.")
+
+def main():
+    print("=========================================")
+    print("           TERMINAL SPIRE                ")
+    print("=========================================")
+    
+    name = input("Enter your hero's name: ")
+    player = Player(name if name.strip() else "Cardmaster")
+    
+    # The "Dungeon" is just a list of enemies getting progressively harder
+    enemies = [
+        Enemy("Slime", 25, [("Tackle", 5), ("Goo Spit", 7)]),
+        Enemy("Armored Knight", 45, [("Sword Slash", 8), ("Shield Bash", 10)]),
+        Enemy("Dragon", 100, [("Claw", 12), ("Fire Breath", 18)])
+    ]
+    
+    for i, enemy in enumerate(enemies):
+        print(f"\n=== FLOOR {i+1} ===")
+        success = combat(player, enemy)
+        
+        if not success:
+            print("\n💀 YOU HAVE PERISHED... 💀")
+            break
+            
+        if i < len(enemies) - 1:
+            print("\n[ Campfire ]")
+            print("You rest and recover 15 HP.")
+            player.hp = min(player.max_hp, player.hp + 15)
+            draft_card(player)
+                
+    if player.hp > 0:
+        print("\n🏆 YOU CONQUERED THE SPIRE! 🏆")
+
+if __name__ == '__main__':
+    main()
+
+
+import random
+import time
+
 # --- GAME DATA ---
 # Dictionary containing all crop stats
 CROPS = {
