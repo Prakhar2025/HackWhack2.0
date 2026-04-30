@@ -1,6 +1,235 @@
 import random
 import time
 
+# --- GAME DATA ---
+# Dictionary of locations, each containing a list of fish dictionaries
+LOCATIONS = {
+    "Pond": [
+        {"name": "Old Boot", "rarity": "Junk", "val": 1, "diff": 1},
+        {"name": "Bluegill", "rarity": "Common", "val": 5, "diff": 2},
+        {"name": "Bass", "rarity": "Uncommon", "val": 15, "diff": 4},
+        {"name": "Catfish", "rarity": "Rare", "val": 40, "diff": 6}
+    ],
+    "Ocean": [
+        {"name": "Seaweed", "rarity": "Junk", "val": 2, "diff": 1},
+        {"name": "Mackerel", "rarity": "Common", "val": 12, "diff": 4},
+        {"name": "Tuna", "rarity": "Uncommon", "val": 35, "diff": 6},
+        {"name": "Shark", "rarity": "Rare", "val": 100, "diff": 9},
+        {"name": "Kraken", "rarity": "Legendary", "val": 500, "diff": 15}
+    ]
+}
+
+class Fisher:
+    """Manages the player's wallet, gear, and inventory."""
+    def __init__(self, name):
+        self.name = name
+        self.money = 20
+        self.bait = 5
+        self.rod_level = 1
+        self.unlocked_ocean = False
+        self.catch_history = {}
+
+    def add_catch(self, fish_name):
+        self.catch_history[fish_name] = self.catch_history.get(fish_name, 0) + 1
+
+def spawn_fish(location_name):
+    """Picks a random fish based on weighted probabilities."""
+    pool = LOCATIONS[location_name]
+    # Weights: Junk(30%), Common(40%), Uncommon(20%), Rare(9%), Legendary(1%)
+    weights = []
+    for f in pool:
+        if f["rarity"] == "Junk": weights.append(30)
+        elif f["rarity"] == "Common": weights.append(40)
+        elif f["rarity"] == "Uncommon": weights.append(20)
+        elif f["rarity"] == "Rare": weights.append(9)
+        elif f["rarity"] == "Legendary": weights.append(1)
+        
+    return random.choices(pool, weights=weights, k=1)[0]
+
+def reel_minigame(player, fish):
+    """The core fishing battle. Balance damage with line tension."""
+    fish_hp = fish["diff"] * 10
+    tension = 0
+    max_tension = 10 + (player.rod_level * 5)
+    
+    print(f"\n*** 🎣 A {fish['rarity']} {fish['name']} bit the line! ***")
+    time.sleep(1)
+    
+    while fish_hp > 0:
+        print(f"\nFish HP: {fish_hp} | Tension: [{'#' * tension}{'-' * (max_tension - tension)}] ({tension}/{max_tension})")
+        print("1. Reel Hard (High damage, High tension risk)")
+        print("2. Reel Steady (Low damage, Low tension)")
+        print("3. Let Line Out (No damage, Reduces tension)")
+        
+        choice = input("Action: ")
+        
+        # Player Action
+        if choice == '1':
+            fish_hp -= (5 + player.rod_level * 2)
+            tension += random.randint(3, 5)
+        elif choice == '2':
+            fish_hp -= (2 + player.rod_level)
+            tension += random.randint(1, 2)
+        elif choice == '3':
+            tension = max(0, tension - random.randint(3, 5))
+            print("You gave the fish some slack...")
+        else:
+            print("You fumbled the reel!")
+            tension += 1
+            
+        # Check if caught early
+        if fish_hp <= 0:
+            break
+            
+        # Fish Action
+        time.sleep(0.5)
+        fish_action = random.choice(["struggle", "pull", "rest", "swim"])
+        if fish_action == "struggle":
+            print(f"The {fish['name']} thrashes wildly!")
+            tension += random.randint(2, 4)
+        elif fish_action == "pull":
+            print(f"The {fish['name']} darts away, pulling the line hard!")
+            tension += random.randint(3, 6)
+        elif fish_action == "rest":
+            print(f"The {fish['name']} seems tired...")
+        elif fish_action == "swim":
+            print(f"The {fish['name']} swims towards you. The line goes slack.")
+            tension = max(0, tension - 2)
+            
+        # Check for snapped line
+        if tension >= max_tension:
+            print("\n💥 SNAP! The line broke! The fish got away...")
+            return False
+            
+        time.sleep(1)
+        
+    print(f"\n🎉 SUCCESS! You caught the {fish['name']}!")
+    print(f"It's worth {fish['val']} Coins.")
+    player.money += fish["val"]
+    player.add_catch(fish["name"])
+    return True
+
+def go_fishing(player):
+    """Handles the location selection and casting phase."""
+    if player.bait <= 0:
+        print("\n❌ You don't have any bait! Visit the shop.")
+        return
+        
+    print("\n--- LOCATIONS ---")
+    print("1. The Old Pond (Safe, low rewards)")
+    if player.unlocked_ocean:
+        print("2. The Deep Ocean (Difficult, high rewards)")
+        
+    choice = input("Where do you want to cast your line? ")
+    location = ""
+    
+    if choice == '1':
+        location = "Pond"
+    elif choice == '2' and player.unlocked_ocean:
+        location = "Ocean"
+    else:
+        print("Invalid choice.")
+        return
+        
+    player.bait -= 1
+    print(f"\n🌊 Casting line into the {location}... (Bait left: {player.bait})")
+    
+    # Suspense building
+    wait_time = random.randint(2, 5)
+    for _ in range(wait_time):
+        print("...")
+        time.sleep(1)
+        
+    print("❗️ BOBBER WENT DOWN!")
+    time.sleep(0.5)
+    
+    fish = spawn_fish(location)
+    reel_minigame(player, fish)
+
+def shop(player):
+    """Store to buy bait, upgrade rods, and unlock areas."""
+    while True:
+        print(f"\n--- TACKLE SHOP --- | Wallet: {player.money} Coins")
+        print("1. Buy Bait (5 Coins for 3 Bait)")
+        
+        rod_cost = player.rod_level * 50
+        print(f"2. Upgrade Rod to Lv.{player.rod_level + 1} ({rod_cost} Coins) - Increases Max Tension & Damage")
+        
+        if not player.unlocked_ocean:
+            print("3. Buy Ocean Boat Pass (100 Coins)")
+            
+        print("4. Leave Shop")
+        
+        choice = input("What do you need? ")
+        
+        if choice == '1':
+            if player.money >= 5:
+                player.money -= 5
+                player.bait += 3
+                print("Bought 3 Bait.")
+            else:
+                print("Not enough coins.")
+        elif choice == '2':
+            if player.money >= rod_cost:
+                player.money -= rod_cost
+                player.rod_level += 1
+                print(f"Rod upgraded to Level {player.rod_level}!")
+            else:
+                print("Not enough coins.")
+        elif choice == '3' and not player.unlocked_ocean:
+            if player.money >= 100:
+                player.money -= 100
+                player.unlocked_ocean = True
+                print("You bought a boat! The Ocean is now unlocked.")
+            else:
+                print("Not enough coins.")
+        elif choice == '4':
+            break
+        else:
+            print("Invalid choice.")
+
+def main():
+    print("=========================================")
+    print("           TERMINAL ANGLER               ")
+    print("=========================================")
+    
+    name = input("Enter your fisher's name: ")
+    player = Fisher(name if name.strip() else "Fisher")
+    
+    while True:
+        print(f"\n=== {player.name}'s Status ===")
+        print(f"Wallet: {player.money} Coins | Bait: {player.bait} | Rod Lv: {player.rod_level}")
+        print("1. Cast Line (Go Fishing)")
+        print("2. Visit Tackle Shop")
+        print("3. View Catch History")
+        print("4. Pack up and go home (Quit)")
+        
+        choice = input("What's the plan? ")
+        
+        if choice == '1':
+            go_fishing(player)
+        elif choice == '2':
+            shop(player)
+        elif choice == '3':
+            print("\n--- CATCH HISTORY ---")
+            if not player.catch_history:
+                print("You haven't caught anything yet!")
+            else:
+                for fish, count in player.catch_history.items():
+                    print(f"{fish}: Caught {count} times")
+        elif choice == '4':
+            print(f"\nYou retired with {player.money} Coins. Thanks for playing!")
+            break
+        else:
+            print("Invalid choice.")
+
+if __name__ == '__main__':
+    main()
+
+
+import random
+import time
+
 class Card:
     """Represents a single playable card."""
     def __init__(self, name, card_type, value, cost):
